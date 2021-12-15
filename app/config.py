@@ -3,6 +3,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+APP_ROOT_PATH = environ["APP_ROOT_PATH"]
+
 MQTT_TOPIC = f"/measurements/#"
 MQTT_HOST = environ["MQTT_HOST"]
 MQTT_PORT = int(environ["MQTT_PORT"])
