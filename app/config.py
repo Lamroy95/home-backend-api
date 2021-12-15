@@ -9,6 +9,7 @@ MQTT_PORT = int(environ["MQTT_PORT"])
 MQTT_USER = environ["MQTT_USER"]
 MQTT_PWD = environ["MQTT_PWD"]
 MQTT_CLIENT_ID = environ.get("MQTT_CLIENT_ID", default="backend-fastapi")
+MQTT_COMMANDS_TOPIC = "/commands"
 
 INFLUX_URL = environ["INFLUX_URL"]
 INFLUX_BUCKET = environ["INFLUX_BUCKET"]

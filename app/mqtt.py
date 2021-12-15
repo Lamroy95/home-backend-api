@@ -1,10 +1,10 @@
 from typing import Optional
 
 import paho.mqtt.client as mqtt
-from influxdb_client import InfluxDBClient, WriteOptions
+from influxdb_client import InfluxDBClient
 
 from app import loggers
-from app.models import Measurement
+from app.models.entities import Measurement
 from app.influxdb.api import write_measurement
 
 
@@ -13,6 +13,7 @@ class MQTTApp:
             self,
             user: str,
             password: str,
+            topic: str,
             influx: InfluxDBClient,
             influx_bucket: str,
             client_id: Optional[str] = None,
@@ -21,6 +22,7 @@ class MQTTApp:
         self.client.username_pw_set(username=user, password=password)
         self.influx = influx
         self.bucket = influx_bucket
+        self.topic = topic
 
         self._setup_handlers()
 
@@ -32,6 +34,7 @@ class MQTTApp:
 
     def on_connect(self, client: mqtt.Client, userdata, flags, rc):
         loggers.mqtt.info("Connected to MQTT broker")
+        self.subscribe(self.topic)
 
     def on_disconnect(self, client: mqtt.Client, userdata, rc):
         loggers.mqtt.info("Disconnected from MQTT broker")
@@ -41,7 +44,6 @@ class MQTTApp:
 
     def on_message(self, client: mqtt.Client, userdata, msg: mqtt.MQTTMessage):
         value = msg.payload.decode('utf-8')
-        loggers.mqtt.error(msg.topic)
         _, place, room, sensor_name = msg.topic.rsplit("/", maxsplit=3)
         loggers.mqtt.info(f"Recieved value from \"{sensor_name}\": {value}")
         m = Measurement(value=value, name=sensor_name, place=place, room=room)
@@ -56,3 +58,11 @@ class MQTTApp:
 
     def stop(self):
         self.client.disconnect()
+
+    def publish(self, topic, value, wait=False):
+        r = self.client.publish(topic=topic, payload=value, qos=2, retain=False)
+        if not wait:
+            loggers.mqtt.info(f"{topic}: value `{value}` queued")
+        else:
+            r.wait_for_publish()
+            loggers.mqtt.info(f"{topic}: value `{value}` published ")

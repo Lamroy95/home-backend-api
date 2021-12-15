@@ -1,31 +1,14 @@
 from contextlib import suppress
-from typing import List, Optional, Union
+from enum import Enum
+from typing import Union
 
 from pydantic import BaseModel, validator, root_validator
 
 from app.config import SENSORS_NAMES_MAP, SENSORS_VALUE_PROCESSORS
 
 
-class Sensor(BaseModel):
-    id: str
-    name: str
-    unit: str
-    max: Optional[Union[float, int]] = None
-    min: Optional[Union[float, int]] = None
-
-
-class Room(BaseModel):
-    name: str
-    sensors: List[Sensor]
-
-
-class Place(BaseModel):
-    name: str
-    rooms: List[Room]
-
-
 class Measurement(BaseModel):
-    value: float
+    value: Union[int, float, str]
     name: str
     place: str
     room: str
@@ -45,4 +28,11 @@ class Measurement(BaseModel):
     def parse_str_value(cls, v):
         with suppress(ValueError):
             return int(v)
-        return float(v)
+        with suppress(ValueError):
+            return float(v)
+        return v
+
+
+class Commands(Enum):
+    SET_AUTO = "set_auto"
+    SET_LEVEL = "set_level"

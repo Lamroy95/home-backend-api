@@ -1,12 +1,14 @@
-from typing import List
+from typing import List, Optional
 import logging
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Query
+from fastapi.middleware.cors import CORSMiddleware
 from influxdb_client import InfluxDBClient
 
 from app import config
+from app.models.entities import Commands
 from app.mqtt import MQTTApp
-from app.models import Place, Sensor, Room
+from app.models.responses import Place, Sensor, Room
 from app import db
 
 logging.basicConfig(
@@ -15,6 +17,14 @@ logging.basicConfig(
 )
 
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 influx = InfluxDBClient(
     url=config.INFLUX_URL,
     token=config.INFLUX_TOKEN,
@@ -25,14 +35,14 @@ mqtt = MQTTApp(
     password=config.MQTT_PWD,
     influx=influx,
     influx_bucket=config.INFLUX_BUCKET,
-    client_id=config.MQTT_CLIENT_ID
+    client_id=config.MQTT_CLIENT_ID,
+    topic=config.MQTT_TOPIC
 )
 
 
 @app.on_event("startup")
 def on_startup():
     mqtt.start(host=config.MQTT_HOST, port=config.MQTT_PORT)
-    mqtt.subscribe(topic=config.MQTT_TOPIC)
 
 
 @app.on_event("shutdown")
@@ -42,35 +52,26 @@ def on_shutdown():
 
 
 @app.get("/measurements/places/", response_model=List[Place])
-async def get_places():
+async def get_places(
+        include_values: bool = True,
+        last_n_minutes: Optional[int] = Query(5, gt=0),
+        influx_client: InfluxDBClient = Depends(lambda: influx),
+):
     """
-    Get list of all available places
+    Get list of all available places.
     """
-    places = db.get_all_places()
+    try:
+        places = db.get_all_places(influx_client, include_values, last_n_minutes)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
     return places
 
 
-@app.get("/measurements/places/{place_name}/", response_model=List[Room])
-async def get_rooms(place_name: str):
-    """
-    Get list of all rooms in place
-    """
-    try:
-        rooms = db.get_rooms(place_name)
-    except ValueError as e:
-        raise HTTPException(404, str(e))
-
-    return rooms
-
-
-@app.get("/measurements/places/{place_name}/{room_name}", response_model=List[Sensor])
-async def get_sensors(place_name: str, room_name):
-    """
-    Get list of all sensors in room
-    """
-    try:
-        sensors = db.get_sensors(place_name, room_name)
-    except ValueError as e:
-        raise HTTPException(404, str(e))
-
-    return sensors
+@app.post("/command/{command_name}/{param}")
+async def set_fan_level(command_name: Commands, param: int, mqtt_app=Depends(lambda: mqtt)):
+    mqtt_app.publish(
+        topic=f"{config.MQTT_COMMANDS_TOPIC}/{command_name.value}",
+        value=f"{param}"
+    )
+    return {"ok": True}
